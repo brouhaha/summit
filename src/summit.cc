@@ -1,4 +1,4 @@
-// crest.cc
+// summit.cc
 //
 // Copyright 2022-2025 Eric Smith
 // SPDX-License-Identifier: GPL-3.0-only
@@ -51,16 +51,16 @@ enum class Command
 
 void ls(const std::string& disk_image_fn)
 {
-  apex::Disk disk;
+  Apex::Disk disk;
   disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
-  auto dir = disk.get_directory(apex::Disk::DirectoryType::PRIMARY);
+  auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
   unsigned file_count = 0;
   std::cout << "              first   block\n";
   std::cout << "filename      block   count   date\n";
   std::cout << "------------  ------  ------  ----------\n";
   for (const auto& dir_entry: dir)
   {
-    if (dir_entry.get_status() == apex::DirectoryEntry::Status::VALID)
+    if (dir_entry.get_status() == Apex::DirectoryEntry::Status::VALID)
       {
 	++file_count;
 	std::cout << std::format("{:12}  {:6d}  {:6d}  {}\n",

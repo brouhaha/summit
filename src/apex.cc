@@ -8,7 +8,7 @@
 
 #include "apex.hh"
 
-namespace apex
+namespace Apex
 {
   DateError::DateError(const std::string& what):
     std::runtime_error("Date error: " + what)
@@ -190,6 +190,7 @@ namespace apex
     {
       m_free_bitmap[block] = true;
     }
+    bool consistency_error = false;
     for (unsigned i = 0; i < ENTRIES_PER_DIRECTORY; i++)
     {
       auto entry = new DirectoryEntry(*this, i);
@@ -198,8 +199,16 @@ namespace apex
       std::uint16_t last = entry->get_last_block();
       for (std::size_t block = first; block <= last; block++)
       {
+	if (! m_free_bitmap[block])
+	{
+	  consistency_error = true;
+	}
 	m_free_bitmap[block] = false;
       }
+    }
+    if (consistency_error)
+    {
+      std::cerr << "directory inconsistent - file block ranges incorrect or overlap\n";
     }
   }
 
@@ -243,5 +252,5 @@ namespace apex
     return Directory(*this, directory_start_block.at(type));
   }
 
-} // end namespace apex
+} // end namespace Apex
 

@@ -16,7 +16,7 @@
 
 #include "apple_ii_disk_image.hh"
 
-namespace apex
+namespace Apex
 {
   class Disk;
   class Directory;
@@ -205,6 +205,6 @@ namespace apex
     friend class DirectoryEntry;
     friend class Directory;
   };
-} // end namespace apex
+} // end namespace Apex
 
 #endif // APEX_HH

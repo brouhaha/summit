@@ -64,10 +64,10 @@ def build_prog(prog_info):
     return env.Program(prog_info.name, objs)[0]
 
 
-prog_infos = [ProgInfo('crest',
+prog_infos = [ProgInfo('summit',
                        ['apex.cc',
                         'apple_ii_disk_image.cc',
-                        'crest.cc'
+                        'summit.cc'
                         ])]
 
 executables = [build_prog(prog_info) for prog_info in prog_infos]
