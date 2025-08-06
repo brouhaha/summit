@@ -127,12 +127,10 @@ namespace apex
     m_dir(dir),
     m_index(index)
   {
-    std::cout << std::format("created iterator, index {}\n", m_index);
   }
 
   Directory::iterator& Directory::iterator::operator++()  // pre-increment
   {
-    std::cout << "incremented iterator\n";
     ++m_index;
     return *this;
   }
@@ -160,44 +158,21 @@ namespace apex
   bool Directory::iterator::operator==(const iterator& other)
   {
     bool equal = (& m_dir == & other.m_dir) && (m_index == other.m_index);
-    std::cout << std::format("operator equality: {}\n", equal);
-    std::cout << std::format("  {} {}\n", m_index, other.m_index);
     return equal;
   }
 
   bool Directory::iterator::operator!=(const iterator& other)
   {
-    return operator==(other);
+    return ! operator==(other);
   }
 
   Directory::iterator::reference Directory::iterator::operator*()
   {
-    std::cout << std::format("dereferencing iterator with index {}\n", m_index);
     if (m_index >= ENTRIES_PER_DIRECTORY)
     {
       throw std::runtime_error(std::format("dereferencing iterator with index {}", m_index));
     }
     return *m_dir.m_directory_entries[m_index];
-  }
-
-  static std::ostream& hex_dump(std::ostream& os,
-				std::uint8_t* data,
-				std::size_t size)
-  {
-    static constexpr std::size_t BYTES_PER_LINE = 16;
-    for (std::size_t i = 0; i < size; i += BYTES_PER_LINE)
-    {
-      os << std::format("{:08x}:", i);
-      for (std::size_t j = 0; j < BYTES_PER_LINE; ++j)
-      {
-	if ((i + j) < size)
-	{
-	  os << std::format(" {:02x}", data[i + j]);
-	}
-      }
-      os << "\n";
-    }
-    return os;
   }
 
   Directory::Directory(Disk& disk, std::uint16_t start_block):
@@ -207,25 +182,9 @@ namespace apex
 	      start_block % AppleIIDiskImage::SECTORS_PER_TRACK,
 	      BLOCKS_PER_DIRECTORY,
 	      m_directory_data.data());
-    hex_dump(std::cout, m_directory_data.data(), m_directory_data.size());
     for (unsigned i = 0; i < ENTRIES_PER_DIRECTORY; i++)
     {
-      std::cout << std::format("creating dir entry {}\n", i);
       m_directory_entries[i] = new DirectoryEntry(*this, i);
-      auto status = m_directory_entries[i]->get_status();
-      if (status == DirectoryEntry::Status::VALID)
-      {
-	std::cout << std::format("  {:2d} {:12} {:5d} {:5d} {}\n",
-				 i,
-				 m_directory_entries[i]->get_filename(),
-				 m_directory_entries[i]->get_first_block(),
-				 m_directory_entries[i]->get_last_block(),
-				 m_directory_entries[i]->get_date().to_string());
-      }
-      else
-      {
-	std::cout << std::format("  not valid\n");
-      }
     }
   }
 
@@ -239,7 +198,6 @@ namespace apex
 
   Directory::iterator Directory::begin()
   {
-    std::cout << "creating begin iterator\n";
     // XXX need to use the first non-deleted directory entry,
     //     of if there isn't one, npos
     return iterator(*this, 0);
@@ -247,7 +205,6 @@ namespace apex
 
   Directory::iterator Directory::end()
   {
-    std::cout << "creating end iterator\n";
     // XXX should use npos
     return iterator(*this, ENTRIES_PER_DIRECTORY);
   }

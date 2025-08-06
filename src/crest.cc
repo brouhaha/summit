@@ -56,10 +56,23 @@ void ls(const std::string& disk_image_fn)
   std::cout << "loaded\n";
 
   auto dir = disk.get_directory(apex::Disk::DirectoryType::PRIMARY);
+  unsigned file_count = 0;
+  std::cout << "              first   block\n";
+  std::cout << "filename      block   count   date\n";
+  std::cout << "------------  ------  ------  ----------\n";
   for (const auto& dir_entry: dir)
   {
-    std::cout << std::format("filename {}\n", dir_entry.get_filename());
+    if (dir_entry.get_status() == apex::DirectoryEntry::Status::VALID)
+      {
+	++file_count;
+	std::cout << std::format("{:12}  {:6d}  {:6d}  {}\n",
+				 dir_entry.get_filename(),
+				 dir_entry.get_first_block(),
+				 dir_entry.get_last_block() + 1 - dir_entry.get_first_block(),
+				 dir_entry.get_date().to_string());
+      }
   }
+  std::cout << std::format("{} files\n", file_count);
 };
 
 
