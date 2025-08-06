@@ -9,6 +9,8 @@
 #include <iterator>
 #include <string>
 
+#include <boost/dynamic_bitset.hpp>
+
 #include <magic_enum.hpp>
 #include <magic_enum_containers.hpp>
 
@@ -16,13 +18,35 @@
 
 namespace apex
 {
+  class Disk;
+  class Directory;
+
   static constexpr std::size_t BYTES_PER_BLOCK = 256;
   static constexpr std::size_t BLOCKS_PER_DIRECTORY = 4;
   static constexpr std::size_t ENTRIES_PER_DIRECTORY = 48;
   static constexpr std::size_t DIRECTORIES_PER_DISK = 2;
 
-  class Disk;
-  class Directory;
+  struct BlockRange
+  {
+    std::uint16_t begin;
+    std::uint16_t end;  // plus one
+  };
+
+  enum class DiskArea
+  {
+    BOOT,
+    PRIMARY_DIRECTORY,
+    BACKUP_DIRECTORY,
+    FILE_AREA,
+  };
+
+  static constexpr magic_enum::containers::array<DiskArea, BlockRange> disk_area_block_range
+  {
+    /* BOOT              */ BlockRange {   0,   9 },
+    /* PRIMARY_DIRECTORY */ BlockRange {   9,  13 },
+    /* BACKUP_DIRECTORY  */ BlockRange {  13,  17 },
+    /* FILE_AREA         */ BlockRange {  17, 560 },
+  };
 
   struct DateError: public std::runtime_error
   { DateError(const std::string& what); };
@@ -47,37 +71,44 @@ namespace apex
     std::uint16_t m_raw;
   };
 
+  static constexpr unsigned FILENAME_CHARS = 8;
+  static constexpr unsigned EXTENSION_CHARS = 3;
+
+  enum DirectoryOffset
+  {
+    // starting offset of per-file fields, indexed by directory entry number
+    FILENAME = 0,                              // 11 bytes
+    STATUS = (FILENAME_CHARS + EXTENSION_CHARS) * ENTRIES_PER_DIRECTORY,  //  1 byte
+    FIRST_BLOCK = 12 * ENTRIES_PER_DIRECTORY,  //  2 bytes
+    LAST_BLOCK = 14 * ENTRIES_PER_DIRECTORY,   //  2 bytes
+
+    // gap from 0x300 .. 0x349
+
+    // offset of per-volume fields
+    PRDEV = 0x34a,  // 1 byte
+    PMAXB = 0x34b,  // 2 bytes - max block - unused - 0x01c6 (456), should be 0x230 (560)
+    PRNAME = 0x34d, // 11 bytes
+    TITLE = 0x358,  // 60 bytes?
+    VOLUME = 0x394, // 2 bytes
+    DIRDAT = 0x396, // 2 bytes
+
+    // another per-file fields, indexed by directory entry number
+    FDATE = 0x398,                             //  2 bytes
+
+    // more per-volume fields
+    FLAGS = 0x3f8,  // 8 bytes - unused
+  };
+
   class DirectoryEntry
   {
   public:
-    static constexpr unsigned FILENAME_CHARS = 8;
-    static constexpr unsigned EXTENSION_CHARS = 3;
-
-    enum DirectoryOffset
-    {
-      // starting offset of per-file fields, indexed by directory entry number
-      FILENAME = 0,                              // 11 bytes
-      STATUS = (FILENAME_CHARS + EXTENSION_CHARS) * ENTRIES_PER_DIRECTORY,  //  1 byte
-      FIRST_BLOCK = 12 * ENTRIES_PER_DIRECTORY,  //  2 bytes
-      LAST_BLOCK = 14 * ENTRIES_PER_DIRECTORY,   //  2 bytes
-      FDATE = 0x398,                             //  2 bytes
-
-      // offset of per-volume fields
-      PRDEV = 0x34a,
-      PMAXB = 0x34b,
-      PRNAME = 0x34d,
-      TITLE = 0x358,
-      VOLUE = 0x394,
-      DIRDAT = 0x396,
-      FLAGS = 0x3f8,
-    };
-
     enum Status: std::uint8_t
     {
-      INVALID = 0,
-      VALID = 1,
-      REPLACE = 254,
-      TENTATIVE = 255,
+      INVALID     = 0x00,
+      VALID       = 0x01,
+      DISK_ERASED = 0xe5,
+      REPLACE     = 0xfe,
+      TENTATIVE   = 0xff,
     };
 
     void replace(Status status,
@@ -134,6 +165,9 @@ namespace apex
 
     ~Directory();
 
+    std::size_t volume_size_blocks() const;
+    std::size_t volume_free_blocks() const;
+
     iterator begin();
     iterator end();
 
@@ -142,6 +176,7 @@ namespace apex
     Disk& m_disk;
     std::array<std::uint8_t, BLOCKS_PER_DIRECTORY * BYTES_PER_BLOCK> m_directory_data;
     std::array<DirectoryEntry*, ENTRIES_PER_DIRECTORY> m_directory_entries;
+    boost::dynamic_bitset<> m_free_bitmap;
 
     friend class DirectoryEntry;
     friend class Disk;

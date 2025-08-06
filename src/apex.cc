@@ -182,9 +182,24 @@ namespace apex
 	      start_block % AppleIIDiskImage::SECTORS_PER_TRACK,
 	      BLOCKS_PER_DIRECTORY,
 	      m_directory_data.data());
+    std::uint16_t max_block = volume_size_blocks();
+    m_free_bitmap.resize(max_block);
+    for (std::size_t block = disk_area_block_range[DiskArea::FILE_AREA].begin;
+	 block < max_block;
+	 ++block)
+    {
+      m_free_bitmap[block] = true;
+    }
     for (unsigned i = 0; i < ENTRIES_PER_DIRECTORY; i++)
     {
-      m_directory_entries[i] = new DirectoryEntry(*this, i);
+      auto entry = new DirectoryEntry(*this, i);
+      m_directory_entries[i] = entry;
+      std::uint16_t first = entry->get_first_block();
+      std::uint16_t last = entry->get_last_block();
+      for (std::size_t block = first; block <= last; block++)
+      {
+	m_free_bitmap[block] = false;
+      }
     }
   }
 
@@ -194,6 +209,16 @@ namespace apex
     {
       delete m_directory_entries[i];
     }
+  }
+
+  std::size_t Directory::volume_size_blocks() const
+  {
+    return (m_directory_data[DirectoryOffset::PMAXB] | (m_directory_data[DirectoryOffset::PMAXB + 1] << 8)) + 1;
+  }
+
+  std::size_t Directory::volume_free_blocks() const
+  {
+    return m_free_bitmap.count();
   }
 
   Directory::iterator Directory::begin()

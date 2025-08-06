@@ -53,8 +53,6 @@ void ls(const std::string& disk_image_fn)
 {
   apex::Disk disk;
   disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
-  std::cout << "loaded\n";
-
   auto dir = disk.get_directory(apex::Disk::DirectoryType::PRIMARY);
   unsigned file_count = 0;
   std::cout << "              first   block\n";
@@ -72,7 +70,11 @@ void ls(const std::string& disk_image_fn)
 				 dir_entry.get_date().to_string());
       }
   }
-  std::cout << std::format("{} files\n", file_count);
+  std::cout << std::format("{} files, {} blocks used, {} blocks free of {} total blcoks\n",
+			   file_count,
+			   dir.volume_size_blocks() - dir.volume_free_blocks(),
+			   dir.volume_free_blocks(),
+			   dir.volume_size_blocks());
 };
 
 
