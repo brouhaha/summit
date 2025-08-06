@@ -9,6 +9,9 @@
 #include <iterator>
 #include <string>
 
+#include <magic_enum.hpp>
+#include <magic_enum_containers.hpp>
+
 #include "apple_ii_disk_image.hh"
 
 namespace apex
@@ -34,9 +37,11 @@ namespace apex
 	 std::uint8_t month,
 	 std::uint8_t day);
 
-    std::uint16_t get_year();
-    std::uint8_t get_month();
-    std::uint8_t get_day();
+    std::uint16_t get_year() const;
+    std::uint8_t get_month() const;
+    std::uint8_t get_day() const;
+
+    std::string to_string() const;
 
   private:
     std::uint16_t m_raw;
@@ -46,7 +51,7 @@ namespace apex
   {
   public:
     static constexpr unsigned FILENAME_CHARS = 8;
-    static constexpr unsigned EXTENSION_CHARS = 8;
+    static constexpr unsigned EXTENSION_CHARS = 3;
 
     enum DirectoryOffset
     {
@@ -81,17 +86,19 @@ namespace apex
 		 std::uint16_t last_block,
 		 Date date);
 
-    Status get_status();
-    std::string get_filename();
-    std::uint16_t get_first_block();
-    std::uint16_t get_last_block();
-    Date get_date();
+    Status get_status() const;
+    std::string get_filename() const;
+    std::uint16_t get_first_block() const;
+    std::uint16_t get_last_block() const;
+    Date get_date() const;
 
   private:
     DirectoryEntry(Directory& dir,
 		   std::size_t index);
     Directory& m_dir;
     std::size_t m_index;
+
+    friend class Directory;
   };
 
   class Directory
@@ -105,25 +112,27 @@ namespace apex
       using pointer = const value_type*;
       using reference = const value_type&;
 
-      reference operator*() const;
-      pointer operator->() const;
+      reference operator*();
+      pointer operator->();
 
-      iterator& operator++();
-      iterator operator++(int);
+      iterator& operator++();    // pre-increment
+      iterator operator++(int);  // post-increment
 
-      iterator& operator--();
-      iterator operator--(int);
+      iterator& operator--();    // pre-decrement
+      iterator operator--(int);  // post-decrement
 
       bool operator==(const iterator& other);
       bool operator!=(const iterator& other);
 
     private:
-      iterator(Directory& dir, int i);
+      iterator(Directory& dir, std::size_t index);
       Directory& m_dir;
-      int m_i;
+      std::size_t m_index;
 
       friend class Directory;
     };
+
+    ~Directory();
 
     iterator begin();
     iterator end();
@@ -132,6 +141,7 @@ namespace apex
     Directory(Disk& disk, std::uint16_t start_block);
     Disk& m_disk;
     std::array<std::uint8_t, BLOCKS_PER_DIRECTORY * BYTES_PER_BLOCK> m_directory_data;
+    std::array<DirectoryEntry*, ENTRIES_PER_DIRECTORY> m_directory_entries;
 
     friend class DirectoryEntry;
     friend class Disk;
@@ -140,15 +150,21 @@ namespace apex
   class Disk: public AppleIIDiskImage
   {
   public:
-    static constexpr std::array<std::uint16_t, DIRECTORIES_PER_DISK> directory_start_block
+    enum class DirectoryType
     {
-      9,  // primary directory
-      13, // backup directory
+      PRIMARY,
+      BACKUP,
+    };
+
+    static constexpr magic_enum::containers::array<DirectoryType, std::uint16_t> directory_start_block
+    {
+      9,  // PRIMARY
+      13, // BACKUP
     };
 
     Disk();
 
-    Directory get_directory(unsigned index);
+    Directory get_directory(DirectoryType type);
 
   private:
     friend class DirectoryEntry;

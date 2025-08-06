@@ -44,8 +44,32 @@ void conflicting_options(const boost::program_options::variables_map& vm,
 
 enum class Command
 {
+  LS,
   CREATE,
 };
+
+
+void ls(const std::string& disk_image_fn)
+{
+  apex::Disk disk;
+  disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  std::cout << "loaded\n";
+
+  auto dir = disk.get_directory(apex::Disk::DirectoryType::PRIMARY);
+  for (const auto& dir_entry: dir)
+  {
+    std::cout << std::format("filename {}\n", dir_entry.get_filename());
+  }
+};
+
+
+void create(const std::string& disk_image_fn,
+	    const std::vector<std::string>& host_fns)
+{
+  (void) disk_image_fn;
+  (void) host_fns;
+  throw std::runtime_error("create not implemented");
+}
 
 
 void validate(boost::any& v,
@@ -80,8 +104,7 @@ int main(int argc, char *argv[])
 
     po::options_description gen_opts("Options");
     gen_opts.add_options()
-      ("help",                                           "output help message")
-      ("create",                                         "create a new image from files");
+      ("help",                                           "output help message");
 
     po::options_description hidden_opts("Hidden options:");
     hidden_opts.add_options()
@@ -122,10 +145,21 @@ int main(int argc, char *argv[])
 				 "image");
     }
 
-    if (vm.count("filename") < 1)
+    switch (command)
     {
-      throw po::validation_error(po::validation_error::at_least_one_value_required,
-				 "filename");
+    case Command::LS:
+      if (vm.count("filename") > 0)
+      {
+	throw po::validation_error(po::validation_error::invalid_option);
+      }
+      break;
+    case Command::CREATE:
+      if (vm.count("filename") < 1)
+      {
+	throw po::validation_error(po::validation_error::at_least_one_value_required,
+				   "filename");
+      }
+      break;
     }
   }
   catch (po::error& e)
@@ -143,8 +177,16 @@ int main(int argc, char *argv[])
   }
 #endif
 
-  apex::Disk disk;
-  //disk.load(AppleIIDiskImage::ImageFormat::DOS_ORDER, disk_image_fn);
+  switch (command)
+  {
+  case Command::LS:
+    ls(disk_image_fn);
+    break;
+
+  case Command::CREATE:
+    create(disk_image_fn, host_fns);
+    break;
+  }
 
   return 0;
 }

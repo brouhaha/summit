@@ -3,6 +3,9 @@
 // Copyright 2025 Eric Smith
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <format>
+#include <iostream>
+
 #include "apex.hh"
 
 namespace apex
@@ -36,22 +39,25 @@ namespace apex
     m_raw = ((year - EPOCH_YEAR) << 9) + (month << 5) + day;
   }
 
-  std::uint16_t Date::get_year()
+  std::uint16_t Date::get_year() const
   {
     return (m_raw >> 9) + EPOCH_YEAR;
   }
   
-  std::uint8_t Date::get_month()
+  std::uint8_t Date::get_month() const
   {
     return (m_raw >> 5) & 0xf;
   }
   
-  std::uint8_t Date::get_day()
+  std::uint8_t Date::get_day() const
   {
     return m_raw & 0x1f;
   }
   
-  
+  std::string Date::to_string() const
+  {
+    return std::format("{:04d}-{:02d}-{:02d}", get_year(), get_month(), get_day());
+  }
 
   DirectoryEntry::DirectoryEntry(Directory& dir,
 				 std::size_t index):
@@ -74,7 +80,7 @@ namespace apex
     (void) date;
   }
 
-  DirectoryEntry::Status DirectoryEntry::get_status()
+  DirectoryEntry::Status DirectoryEntry::get_status() const
   {
     return static_cast<Status>(m_dir.m_directory_data[DirectoryOffset::STATUS + m_index]);
   }
@@ -89,38 +95,109 @@ namespace apex
     return s;
   }
 
-  std::string DirectoryEntry::get_filename()
+  std::string DirectoryEntry::get_filename() const
   {
     std::size_t filename_offset = DirectoryOffset::FILENAME + m_index * (FILENAME_CHARS + EXTENSION_CHARS);
-    std::size_t extension_offset = filename_offset + 3;
+    std::size_t extension_offset = filename_offset + FILENAME_CHARS;
     std::string fn = extract_filename_part(m_dir.m_directory_data.data() + filename_offset, FILENAME_CHARS);
     std::string ext = extract_filename_part(m_dir.m_directory_data.data() + extension_offset, EXTENSION_CHARS);
     return (ext.size() == 0) ? fn : fn + '.' + ext;
   }
 
-  std::uint16_t DirectoryEntry::get_first_block()
+  std::uint16_t DirectoryEntry::get_first_block() const
   {
     std::size_t offset = DirectoryOffset::FIRST_BLOCK + m_index * 2;
     return m_dir.m_directory_data[offset] + (m_dir.m_directory_data[offset + 1] << 8);
   }
 
-  std::uint16_t DirectoryEntry::get_last_block()
+  std::uint16_t DirectoryEntry::get_last_block() const
   {
     std::size_t offset = DirectoryOffset::LAST_BLOCK + m_index * 2;
     return m_dir.m_directory_data[offset] + (m_dir.m_directory_data[offset + 1] << 8);
   }
 
-  Date DirectoryEntry::get_date()
+  Date DirectoryEntry::get_date() const
   {
     std::size_t offset = DirectoryOffset::FDATE + m_index * 2;
     std::uint16_t raw = m_dir.m_directory_data[offset] + (m_dir.m_directory_data[offset + 1] << 8);
     return Date(raw);
   }
 
-  Directory::iterator::iterator(Directory& dir, int i):
+  Directory::iterator::iterator(Directory& dir, std::size_t index):
     m_dir(dir),
-    m_i(i)
+    m_index(index)
   {
+    std::cout << std::format("created iterator, index {}\n", m_index);
+  }
+
+  Directory::iterator& Directory::iterator::operator++()  // pre-increment
+  {
+    std::cout << "incremented iterator\n";
+    ++m_index;
+    return *this;
+  }
+
+  Directory::iterator Directory::iterator::operator++(int)  // post-increment
+  {
+    iterator old = *this;
+    operator++();
+    return old;
+  }
+
+  Directory::iterator& Directory::iterator::operator--()  // pre-decrement
+  {
+    --m_index;
+    return *this;
+  }
+
+  Directory::iterator Directory::iterator::operator--(int)  // post-decrement
+  {
+    iterator old = *this;
+    operator--();
+    return old;
+  }
+
+  bool Directory::iterator::operator==(const iterator& other)
+  {
+    bool equal = (& m_dir == & other.m_dir) && (m_index == other.m_index);
+    std::cout << std::format("operator equality: {}\n", equal);
+    std::cout << std::format("  {} {}\n", m_index, other.m_index);
+    return equal;
+  }
+
+  bool Directory::iterator::operator!=(const iterator& other)
+  {
+    return operator==(other);
+  }
+
+  Directory::iterator::reference Directory::iterator::operator*()
+  {
+    std::cout << std::format("dereferencing iterator with index {}\n", m_index);
+    if (m_index >= ENTRIES_PER_DIRECTORY)
+    {
+      throw std::runtime_error(std::format("dereferencing iterator with index {}", m_index));
+    }
+    return *m_dir.m_directory_entries[m_index];
+  }
+
+  static std::ostream& hex_dump(std::ostream& os,
+				std::uint8_t* data,
+				std::size_t size)
+  {
+    static constexpr std::size_t BYTES_PER_LINE = 16;
+    for (std::size_t i = 0; i < size; i += BYTES_PER_LINE)
+    {
+      os << std::format("{:08x}:", i);
+      for (std::size_t j = 0; j < BYTES_PER_LINE; ++j)
+      {
+	if ((i + j) < size)
+	{
+	  os << std::format(" {:02x}", data[i + j]);
+	}
+      }
+      os << "\n";
+    }
+    return os;
   }
 
   Directory::Directory(Disk& disk, std::uint16_t start_block):
@@ -130,10 +207,39 @@ namespace apex
 	      start_block % AppleIIDiskImage::SECTORS_PER_TRACK,
 	      BLOCKS_PER_DIRECTORY,
 	      m_directory_data.data());
+    hex_dump(std::cout, m_directory_data.data(), m_directory_data.size());
+    for (unsigned i = 0; i < ENTRIES_PER_DIRECTORY; i++)
+    {
+      std::cout << std::format("creating dir entry {}\n", i);
+      m_directory_entries[i] = new DirectoryEntry(*this, i);
+      auto status = m_directory_entries[i]->get_status();
+      if (status == DirectoryEntry::Status::VALID)
+      {
+	std::cout << std::format("  {:2d} {:12} {:5d} {:5d} {}\n",
+				 i,
+				 m_directory_entries[i]->get_filename(),
+				 m_directory_entries[i]->get_first_block(),
+				 m_directory_entries[i]->get_last_block(),
+				 m_directory_entries[i]->get_date().to_string());
+      }
+      else
+      {
+	std::cout << std::format("  not valid\n");
+      }
+    }
+  }
+
+  Directory::~Directory()
+  {
+    for (unsigned i = 0; i < ENTRIES_PER_DIRECTORY; i++)
+    {
+      delete m_directory_entries[i];
+    }
   }
 
   Directory::iterator Directory::begin()
   {
+    std::cout << "creating begin iterator\n";
     // XXX need to use the first non-deleted directory entry,
     //     of if there isn't one, npos
     return iterator(*this, 0);
@@ -141,17 +247,18 @@ namespace apex
 
   Directory::iterator Directory::end()
   {
-    // XXX need to use npos
-    return iterator(*this, 48);
+    std::cout << "creating end iterator\n";
+    // XXX should use npos
+    return iterator(*this, ENTRIES_PER_DIRECTORY);
   }
 
   Disk::Disk()
   {
   }
 
-  Directory Disk::get_directory(unsigned index)
+  Directory Disk::get_directory(DirectoryType type)
   {
-    return Directory(*this, directory_start_block.at(index));
+    return Directory(*this, directory_start_block.at(type));
   }
 
 } // end namespace apex
