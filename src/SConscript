@@ -1,0 +1,103 @@
+# Copyright 2025 Eric Smith
+# SPDX-License-Identifier: GPL-3.0-only
+
+from dataclasses import dataclass, field
+from typing import Optional
+
+use_clang = False
+
+OPTIMIZE = True
+DEBUG = False
+STRIP = True
+
+Import('env')
+
+target = env['target']
+
+if target == 'win32':
+    env['CC'] = 'i686-w64-mingw32-gcc'
+    env['CXX'] = 'i686-w64-mingw32-g++'
+    env.Append(CPPPATH = ['#magic_enum'])
+    env.Append(LIBS = 'boost_program_options-x32')
+    env['PROGSUFFIX'] = '.exe'
+    env['OBJSUFFIX'] = '.obj'
+    env['LINKFLAGS'] = ['-Wl,--subsystem,console']
+    if STRIP:
+        env.Append(LINKFLAGS = ['-s'])
+    env['DLLPATH'] = ['/usr/i686-w64-mingw32/sys-root/mingw/bin',
+                      '/usr/i686-w64-mingw32/sys-root/mingw/lib']
+elif target == 'win64':
+    env['CC'] = 'x86_64-w64-mingw32-gcc'
+    env['CXX'] = 'x86_64-w64-mingw32-g++'
+    env.Append(CPPPATH = ['#magic_enum'])
+    env.Append(LIBS = 'boost_program_options-x64')
+    env['PROGSUFFIX'] = '.exe'
+    env['OBJSUFFIX'] = '.obj'
+    env['LINKFLAGS'] = ['-Wl,--subsystem,console']
+    if STRIP:
+        env.Append(LINKFLAGS = ['-s'])
+    env['DLLPATH'] = ['/usr/x86_64-w64-mingw32/sys-root/mingw/bin',
+                      '/usr/x86_64-w64-mingw32/sys-root/mingw/lib']
+else:
+    env.Append(LIBS = ['boost_program_options'])
+    if STRIP:
+        env.Append(LINKFLAGS = '-s')
+
+
+cxxflags = ['--std=c++23', '-Wall', '-Wextra', '-Werror', '-pedantic', '-g']
+if OPTIMIZE:
+    cxxflags.append(['-O2'])
+if DEBUG:
+    cxxflags.append(['-g'])
+
+env.Append(CXXFLAGS = cxxflags)
+
+
+@dataclass
+class ProgInfo:
+    name: str
+    srcs: list[str]
+
+
+def build_prog(prog_info):
+    objs = [env.Object(src)[0] for src in prog_info.srcs]
+    return env.Program(prog_info.name, objs)[0]
+
+
+prog_infos = [ProgInfo('crest',
+                       ['apex.cc',
+                        'apple_ii_disk_image.cc',
+                        'crest.cc'
+                        ])]
+
+executables = [build_prog(prog_info) for prog_info in prog_infos]
+
+env.Default(executables)
+
+
+#-----------------------------------------------------------------------------
+# Windows package
+#-----------------------------------------------------------------------------
+
+if target in ['win32', 'win64']:
+    win_tools = ['dzip']
+    for win_tool in win_tools:
+        env.Tool(win_tool)
+    other_dlls = []
+    package_files = executables
+
+    dll_search_path = { 'win32': ['/usr/i686-w64-mingw32/sys-root/mingw'],
+                        'win64': ['/usr/x86_64-w64-mingw32/sys-root/mingw'] }
+
+    app_metadata = env['app_metadata']
+    packaged_name = 'ibex-' + target + '-' + app_metadata['version'] + '-' + app_metadata['release_type']
+
+    zip_file = env.DZIP(target = packaged_name + '.zip',
+                        source = package_files,
+                        DLL_SEARCH_PATH = dll_search_path[target],
+                        OTHER_DLLS = other_dlls)
+    env.Default(zip_file)
+
+# Local Variables:
+# mode: python
+# End:
