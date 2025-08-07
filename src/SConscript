@@ -6,9 +6,9 @@ from typing import Optional
 
 use_clang = False
 
-OPTIMIZE = True
-DEBUG = False
-STRIP = True
+OPTIMIZE = False
+DEBUG = True
+STRIP = False
 
 Import('env')
 
@@ -44,7 +44,7 @@ else:
         env.Append(LINKFLAGS = '-s')
 
 
-cxxflags = ['--std=c++23', '-Wall', '-Wextra', '-Werror', '-pedantic', '-g']
+cxxflags = ['--std=c++20', '-Wall', '-Wextra', '-Werror', '-pedantic', '-g']
 if OPTIMIZE:
     cxxflags.append(['-O2'])
 if DEBUG:
@@ -67,7 +67,8 @@ def build_prog(prog_info):
 prog_infos = [ProgInfo('summit',
                        ['apex.cc',
                         'apple_ii_disk_image.cc',
-                        'summit.cc'
+                        'summit.cc',
+                        'utility.cc'
                         ])]
 
 executables = [build_prog(prog_info) for prog_info in prog_infos]

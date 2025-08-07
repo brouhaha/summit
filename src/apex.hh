@@ -6,8 +6,10 @@
 #ifndef APEX_HH
 #define APEX_HH
 
+#include <array>
 #include <iterator>
 #include <string>
+#include <vector>
 
 #include <boost/dynamic_bitset.hpp>
 
@@ -25,6 +27,38 @@ namespace Apex
   static constexpr std::size_t BLOCKS_PER_DIRECTORY = 4;
   static constexpr std::size_t ENTRIES_PER_DIRECTORY = 48;
   static constexpr std::size_t DIRECTORIES_PER_DISK = 2;
+
+  static constexpr unsigned FILENAME_CHARS = 8;
+  static constexpr unsigned EXTENSION_CHARS = 3;
+
+  struct FilenameError: std::runtime_error
+  { FilenameError(const std::string& what); };
+
+  class Filename
+  {
+  public:
+    std::vector<char> name;
+    std::vector<char> ext;
+
+    // invalid filename
+    Filename();
+
+    Filename(const std::string& pattern);
+
+    // raw Apex filename, must be exactly 11 characters,
+    // name and extension padded with spaces, no period
+    // separator
+    Filename(const char* data, std::size_t length);
+
+    bool has_wildcard() const;
+
+    bool match(const Filename& other) const;
+
+    std::string to_string() const;
+
+  private:
+    bool m_has_wildcard;
+  };
 
   struct BlockRange
   {
@@ -71,9 +105,6 @@ namespace Apex
     std::uint16_t m_raw;
   };
 
-  static constexpr unsigned FILENAME_CHARS = 8;
-  static constexpr unsigned EXTENSION_CHARS = 3;
-
   enum DirectoryOffset
   {
     // starting offset of per-file fields, indexed by directory entry number
@@ -82,17 +113,20 @@ namespace Apex
     FIRST_BLOCK = 12 * ENTRIES_PER_DIRECTORY,  //  2 bytes
     LAST_BLOCK = 14 * ENTRIES_PER_DIRECTORY,   //  2 bytes
 
-    // gap from 0x300 .. 0x349
+    // 74 bytes unused from 0x300..0x349
 
     // offset of per-volume fields
     PRDEV = 0x34a,  // 1 byte
     PMAXB = 0x34b,  // 2 bytes - max block - unused - 0x01c6 (456), should be 0x230 (560)
     PRNAME = 0x34d, // 11 bytes
-    TITLE = 0x358,  // 60 bytes?
+    TITLE = 0x358,  // 32 bytes
+
+    // 28 bytes unused from 0x378..0x393
+
     VOLUME = 0x394, // 2 bytes
     DIRDAT = 0x396, // 2 bytes
 
-    // another per-file fields, indexed by directory entry number
+    // another per-file field, indexed by directory entry number
     FDATE = 0x398,                             //  2 bytes
 
     // more per-volume fields
@@ -111,16 +145,19 @@ namespace Apex
       TENTATIVE   = 0xff,
     };
 
+    void delete_file();
+
     void replace(Status status,
-		 const std::string& filename,
+		 const Filename& filename,
 		 std::uint16_t first_block,
 		 std::uint16_t last_block,
 		 Date date);
 
     Status get_status() const;
-    std::string get_filename() const;
+    Filename get_filename() const;
     std::uint16_t get_first_block() const;
     std::uint16_t get_last_block() const;
+    std::uint16_t get_block_count() const;
     Date get_date() const;
 
   private:
@@ -140,8 +177,8 @@ namespace Apex
     public:
       using iterator_category = std::bidirectional_iterator_tag;
       using value_type = DirectoryEntry;
-      using pointer = const value_type*;
-      using reference = const value_type&;
+      using pointer = value_type*;
+      using reference = value_type&;
 
       reference operator*();
       pointer operator->();
@@ -168,12 +205,22 @@ namespace Apex
     std::size_t volume_size_blocks() const;
     std::size_t volume_free_blocks() const;
 
+    // returns 0 if not found
+    std::uint16_t find_free_blocks(std::uint16_t requested_block_count) const;
+
+    void debug_list_free_blocks() const;
+
     iterator begin();
     iterator end();
 
   private:
     Directory(Disk& disk, std::uint16_t start_block);
+    void update_free_bitmap();
+    void update_disk_image();
+
     Disk& m_disk;
+    std::uint16_t m_start_block;
+
     std::array<std::uint8_t, BLOCKS_PER_DIRECTORY * BYTES_PER_BLOCK> m_directory_data;
     std::array<DirectoryEntry*, ENTRIES_PER_DIRECTORY> m_directory_entries;
     boost::dynamic_bitset<> m_free_bitmap;
@@ -200,6 +247,14 @@ namespace Apex
     Disk();
 
     Directory get_directory(DirectoryType type);
+
+    void read(std::uint16_t block_number,
+	      std::size_t block_count,
+	      std::uint8_t* data);
+
+    void write(std::uint16_t block_number,
+	       std::size_t block_count,
+	       const std::uint8_t* data);
 
   private:
     friend class DirectoryEntry;
