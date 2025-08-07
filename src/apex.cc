@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 #include <format>
 #include <iostream>
@@ -138,10 +139,35 @@ namespace Apex
     return e.size() ? n + '.' + e : n;
   }
 
+  Filename Filename::upcase() const
+  {
+    Filename fn;
+    for (std::size_t i = 0; i < FILENAME_CHARS; i++)
+    {
+      fn.name[i] = utility::upcase_character(name[i]);
+    }
+    for (std::size_t i = 0; i < EXTENSION_CHARS; i++)
+    {
+      fn.ext[i] = utility::upcase_character(ext[i]);
+    }
+
+    return fn;
+  }
+
 
   DateError::DateError(const std::string& what):
     std::runtime_error("Date error: " + what)
   {
+  }
+
+  Date::Date()
+  {
+    const auto now = std::chrono::system_clock::now();
+    time_t tt = std::chrono::system_clock::to_time_t(now);
+    struct tm local_tm = *localtime(&tt);
+    m_raw = (((local_tm.tm_year + 1900 - EPOCH_YEAR) << 9) +
+	     ((local_tm.tm_mon + 1) << 5) +
+	     local_tm.tm_mday);
   }
 
   Date::Date(std::uint16_t raw):
@@ -182,6 +208,11 @@ namespace Apex
   {
     return m_raw & 0x1f;
   }
+
+  std::uint16_t Date::get_raw() const
+  {
+    return m_raw;
+  }
   
   std::string Date::to_string() const
   {
@@ -209,12 +240,29 @@ namespace Apex
 			       std::uint16_t last_block,
 			       Date date)
   {
-    throw std::runtime_error("DirectoryEntry::set() unimplemented");
-    (void) status;
-    (void) filename;
-    (void) first_block;
-    (void) last_block;
-    (void) date;
+    if (m_dir.m_directory_data[DirectoryOffset::STATUS + m_index] != static_cast<std::uint8_t>(Status::INVALID))
+    {
+      throw std::runtime_error("can't overwrite a directory entry that is in use");
+    }
+    
+    m_dir.m_directory_data[DirectoryOffset::STATUS + m_index] = static_cast<Status>(status);
+
+    Filename fn = filename.upcase();
+
+    std::size_t filename_offset = DirectoryOffset::FILENAME + m_index * (FILENAME_CHARS + EXTENSION_CHARS);
+    std::memcpy(m_dir.m_directory_data.data() + filename_offset,
+		fn.name.data(),
+		FILENAME_CHARS);
+    std::memcpy(m_dir.m_directory_data.data() + filename_offset + FILENAME_CHARS,
+		fn.ext.data(),
+		EXTENSION_CHARS);
+
+    m_dir.write_u16(DirectoryOffset::FIRST_BLOCK + m_index * 2, first_block);
+    m_dir.write_u16(DirectoryOffset::LAST_BLOCK + m_index * 2, last_block);
+    m_dir.write_u16(DirectoryOffset::FDATE + m_index * 2, date.get_raw());
+
+    m_dir.update_free_bitmap();
+    m_dir.update_disk_image();
   }
 
   DirectoryEntry::Status DirectoryEntry::get_status() const
@@ -232,13 +280,13 @@ namespace Apex
   std::uint16_t DirectoryEntry::get_first_block() const
   {
     std::size_t offset = DirectoryOffset::FIRST_BLOCK + m_index * 2;
-    return m_dir.m_directory_data[offset] + (m_dir.m_directory_data[offset + 1] << 8);
+    return m_dir.read_u16(offset);
   }
 
   std::uint16_t DirectoryEntry::get_last_block() const
   {
     std::size_t offset = DirectoryOffset::LAST_BLOCK + m_index * 2;
-    return m_dir.m_directory_data[offset] + (m_dir.m_directory_data[offset + 1] << 8);
+    return m_dir.read_u16(offset);
   }
 
   std::uint16_t DirectoryEntry::get_block_count() const
@@ -249,8 +297,7 @@ namespace Apex
   Date DirectoryEntry::get_date() const
   {
     std::size_t offset = DirectoryOffset::FDATE + m_index * 2;
-    std::uint16_t raw = m_dir.m_directory_data[offset] + (m_dir.m_directory_data[offset + 1] << 8);
-    return Date(raw);
+    return Date(m_dir.read_u16(offset));
   }
 
   Directory::iterator::iterator(Directory& dir, std::size_t index):
@@ -323,6 +370,29 @@ namespace Apex
     }
   }
 
+  std::uint16_t Directory::read_u16(std::size_t offset) const
+  {
+    return m_directory_data[offset] | (m_directory_data[offset + 1] << 8);
+  }
+
+  void Directory::write_u16(std::size_t offset, std::uint16_t value)
+  {
+    m_directory_data[offset] = value & 0xff;
+    m_directory_data[offset + 1] = value >> 8;
+  }
+
+  DirectoryEntry& Directory::allocate_directory_entry()
+  {
+    for (DirectoryEntry* entry: m_directory_entries)
+    {
+      if (entry->get_status() == DirectoryEntry::Status::INVALID)
+      {
+	return *entry;
+      }
+    }
+    throw std::runtime_error("out of directory entries");
+  }
+
   void Directory::update_free_bitmap()
   {
     std::uint16_t max_block = volume_size_blocks();
@@ -368,7 +438,7 @@ namespace Apex
 
   std::size_t Directory::volume_size_blocks() const
   {
-    return (m_directory_data[DirectoryOffset::PMAXB] | (m_directory_data[DirectoryOffset::PMAXB + 1] << 8)) + 1;
+    return read_u16(DirectoryOffset::PMAXB) + 1;
   }
 
   std::size_t Directory::volume_free_blocks() const

@@ -6,9 +6,9 @@ from typing import Optional
 
 use_clang = False
 
-OPTIMIZE = False
-DEBUG = True
-STRIP = False
+OPTIMIZE = True
+DEBUG = False
+STRIP = True
 
 Import('env')
 
@@ -91,7 +91,8 @@ if target in ['win32', 'win64']:
                         'win64': ['/usr/x86_64-w64-mingw32/sys-root/mingw'] }
 
     app_metadata = env['app_metadata']
-    packaged_name = 'ibex-' + target + '-' + app_metadata['version'] + '-' + app_metadata['release_type']
+    print(app_metadata)
+    packaged_name = app_metadata['name'] + '-' + target + '-' + app_metadata['version'] + '-' + app_metadata['release_type']
 
     zip_file = env.DZIP(target = packaged_name + '.zip',
                         source = package_files,

@@ -3,6 +3,8 @@
 // Copyright 2022-2025 Eric Smith
 // SPDX-License-Identifier: GPL-3.0-only
 
+#include <chrono>
+#include <filesystem>
 #include <format>
 #include <fstream>
 #include <iostream>
@@ -14,6 +16,7 @@
 #include <magic_enum.hpp>
 
 #include "apex.hh"
+#include "app_metadata.hh"
 #include "apple_ii_disk_image.hh"
 #include "utility.hh"
 
@@ -48,9 +51,10 @@ void conflicting_options(const boost::program_options::variables_map& vm,
 enum class Command
 {
   LS,
-  CREATE,
   EXTRACT,
   RM,
+  CREATE,
+  INSERT,
   // for debug:
   FREE,
 };
@@ -224,6 +228,97 @@ void extract(const std::string& disk_image_fn,
 }
 
 
+static Apex::Date get_host_file_modification_date(std::string filename)
+{
+  std::filesystem::file_time_type file_time = std::filesystem::last_write_time(filename);
+  auto sys_time = std::chrono::clock_cast<std::chrono::system_clock
+>(file_time);
+  std::chrono::sys_days days_since_epoch = std::chrono::floor<std::chrono::days>(sys_time);
+  std::chrono::year_month_day ymd = days_since_epoch;
+  int year  = static_cast<int>(ymd.year());
+  unsigned month = static_cast<unsigned>(ymd.month());
+  unsigned day   = static_cast<unsigned>(ymd.day());
+  return Apex::Date(year, month, day);
+}
+
+void insert_file(Apex::Disk& disk,
+		 Apex::Directory& dir,
+		 const Apex::Filename& filename)
+{
+  std::string host_filename = utility::downcase_string(filename.to_string());
+
+  // get size of file, round up to integral number of blocks
+  std::uintmax_t host_file_size_bytes = std::filesystem::file_size(host_filename);
+  std::size_t file_size_blocks = (host_file_size_bytes + Apex::BYTES_PER_BLOCK - 1) / Apex::BYTES_PER_BLOCK;
+
+  // get modification date of file
+  Apex::Date mod_date = get_host_file_modification_date(host_filename);
+
+  // XXX should make sure filename is not already in Apex directory
+
+  // allocate directory entry
+  Apex::DirectoryEntry dir_entry = dir.allocate_directory_entry();
+
+  // allocate blocks
+  std::uint16_t start_block = dir.find_free_blocks(file_size_blocks);
+
+  // read host file and write data to image
+  std::ifstream host_file(host_filename,
+			  std::ios_base::in | std::ios_base::binary);
+  if (! host_file.is_open())
+  {
+    throw std::runtime_error(std::format("unable to open host file \"{}\" to read", host_filename));
+  }
+  std::array<std::uint8_t, Apex::BYTES_PER_BLOCK> buffer;
+  for (std::uint16_t block_index = 0;
+       block_index < file_size_blocks;
+       ++block_index)
+  {
+    host_file.read(reinterpret_cast<char*>(buffer.data()),
+		   Apex::BYTES_PER_BLOCK);
+    if (host_file.eof())
+    {
+      if (block_index != (file_size_blocks - 1))
+      {
+	throw std::runtime_error(std::format("premature eof reading host file \"{}\"", host_filename));
+      }
+    }
+    else if (host_file.fail())
+    {
+      throw std::runtime_error(std::format("error reading host file \"{}\"", host_filename));
+    }
+    disk.write(start_block + block_index, 1, buffer.data());
+  }
+
+  dir_entry.replace(Apex::DirectoryEntry::Status::VALID,
+		    filename,
+		    start_block,
+		    start_block + file_size_blocks - 1,
+		    mod_date);
+}
+
+
+void insert(const std::string& disk_image_fn,
+	    const std::vector<Apex::Filename>& patterns)
+{
+  Apex::Disk disk;
+  disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
+
+  std::size_t file_inserted_count = 0;
+  for (const Apex::Filename& filename: patterns)
+  {
+    insert_file(disk, dir, filename);
+    ++file_inserted_count;
+  }
+
+  disk.save(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  std::cout << std::format("{} files inserted\n", file_inserted_count);
+}
+
+
+
+
 void validate(boost::any& v,
 	      const std::vector<std::string>& values,
 	      Command*,
@@ -268,6 +363,8 @@ int main(int argc, char *argv[])
   std::vector<std::string> pattern_strings;
   std::vector<Apex::Filename> patterns;
   [[maybe_unused]] AppleIIDiskImage::ImageFormat image_format = AppleIIDiskImage::ImageFormat::DOS_ORDER;
+
+  std::cout << std::format("{} version {} {}\n", name, app_version_string, release_type_string);
 
   try
   {
@@ -334,6 +431,7 @@ int main(int argc, char *argv[])
       }
       break;
     case Command::CREATE:
+    case Command::INSERT:
     case Command::RM:
       if (vm.count("filename") < 1)
       {
@@ -371,6 +469,10 @@ int main(int argc, char *argv[])
 
   case Command::EXTRACT:
     extract(disk_image_fn, patterns);
+    break;
+
+  case Command::INSERT:
+    insert(disk_image_fn, patterns);
     break;
 
   case Command::CREATE:

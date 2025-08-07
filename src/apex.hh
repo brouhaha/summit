@@ -9,6 +9,7 @@
 #include <array>
 #include <iterator>
 #include <string>
+#include <time.h>
 #include <vector>
 
 #include <boost/dynamic_bitset.hpp>
@@ -56,6 +57,8 @@ namespace Apex
 
     std::string to_string() const;
 
+    Filename upcase() const;
+
   private:
     bool m_has_wildcard;
   };
@@ -90,6 +93,7 @@ namespace Apex
   public:
     static constexpr int EPOCH_YEAR = 1976;
 
+    Date(); // today
     Date(std::uint16_t raw);
     Date(unsigned year,
 	 std::uint8_t month,
@@ -98,6 +102,8 @@ namespace Apex
     std::uint16_t get_year() const;
     std::uint8_t get_month() const;
     std::uint8_t get_day() const;
+
+    std::uint16_t get_raw() const;
 
     std::string to_string() const;
 
@@ -213,10 +219,15 @@ namespace Apex
     iterator begin();
     iterator end();
 
+    DirectoryEntry& allocate_directory_entry();
+
   private:
     Directory(Disk& disk, std::uint16_t start_block);
+    std::uint16_t read_u16(std::size_t offset) const;
+    void write_u16(std::size_t offset, std::uint16_t value);
     void update_free_bitmap();
     void update_disk_image();
+
 
     Disk& m_disk;
     std::uint16_t m_start_block;
