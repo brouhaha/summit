@@ -54,14 +54,32 @@ target isn't specified, it defaults to the most recent target that was specified
 The exeuctable, and a .msi installer, will be found in build/win32 or build/win64,
 as appropriate.
 
-## Running Summit
+## Wildcards
+
+Summit can process simple wildcards, '*' and '?', in filename patterns to
+be matched against Apex disk image directory entries. Depending on the host
+operating system, there are some caveats:
+
+* On Linux/BSD/MacOS/Unix/Posix systems, the shell will expand wildcards.
+  For commands in which it is desired to have summit match a wildcard pattern
+  against the Apex disk image directory, the pattern should be quoted with
+  single quotes (apostrophes) to prevent the shell from expanding the wildcard
+  from the host directory. For example,
+  `summit ls disk.img a*.*` might not work as expected, if the host system
+  has any files starting with an 'a' and containing a '.'. Instead, use
+  `summit ls disk.img 'a*.*'\.
+
+* On Windows, the command prompt shell does not expand wildcards. For the
+  create and insert commands, individual files will need to be specified
+  on the command line. However, for other commands such as insert and ls,
+  it is not necessary to put single quotes around the pattern.
+
+## Summit commands
 
 Summit is executed from a command line. There is two mandatory
 positional arguments, which are the command to be executed, and the filename
 of the Apex disk image. These may be followed by filenames or patterns for
 use by the command
-
-## Summit commands
 
 * `summit ls disk.img` produces a directory listing of the Apex disk image. Optional
   arguments are interpreted as patterns to match. For instance,
@@ -99,5 +117,4 @@ use by the command
 
 * The Summit command line parsing is currently very crude. The command line
   syntax is subject to change.
-
 
