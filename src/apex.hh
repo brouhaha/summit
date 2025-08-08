@@ -32,6 +32,8 @@ namespace Apex
   static constexpr unsigned FILENAME_CHARS = 8;
   static constexpr unsigned EXTENSION_CHARS = 3;
 
+  static constexpr unsigned MAX_TITLE_CHARS = 32;
+
   struct FilenameError: std::runtime_error
   { FilenameError(const std::string& what); };
 
@@ -107,6 +109,8 @@ namespace Apex
 
     std::string to_string() const;
 
+    friend std::ostream& operator<<(std::ostream& os, const Date& date);
+
   private:
     std::uint16_t m_raw;
   };
@@ -122,21 +126,25 @@ namespace Apex
     // 74 bytes unused from 0x300..0x349
 
     // offset of per-volume fields
-    PRDEV = 0x34a,  // 1 byte
+    PRDEV = 0x34a,  // 1 byte - device associated with PRNAME
     PMAXB = 0x34b,  // 2 bytes - max block - unused - 0x01c6 (456), should be 0x230 (560)
-    PRNAME = 0x34d, // 11 bytes
-    TITLE = 0x358,  // 32 bytes
+    PRNAME = 0x34d, // 11 bytes - default file
+    TITLE = 0x358,  // 32 bytes - volume title
 
     // 28 bytes unused from 0x378..0x393
 
-    VOLUME = 0x394, // 2 bytes
-    DIRDAT = 0x396, // 2 bytes
+    VOLUME = 0x394, // 2 bytes - volume unique ID
+    DIRDAT = 0x396, // 2 bytes - volume date
 
     // another per-file field, indexed by directory entry number
     FDATE = 0x398,                             //  2 bytes
 
     // more per-volume fields
-    FLAGS = 0x3f8,  // 8 bytes - unused
+    FLAG_PACK = 0x3f8,
+    FLAG_BACKUP = 0x3f9,
+    FLAG_CHECK = 0x3fa,
+
+    // 5 bytes - unused, potentially additional flags
   };
 
   class DirectoryEntry
@@ -208,6 +216,14 @@ namespace Apex
 
     ~Directory();
 
+    std::uint16_t get_volume_number() const;
+
+    Date get_date() const;
+    void set_date(const Date& new_date);
+
+    std::string get_title() const;
+    void set_title(const std::string& new_title);
+
     std::size_t volume_size_blocks() const;
     std::size_t volume_free_blocks() const;
 
@@ -223,6 +239,8 @@ namespace Apex
 
   private:
     Directory(Disk& disk, std::uint16_t start_block);
+    void initialize(std::uint16_t block_count,
+		    std::uint16_t volume_number);
     std::uint16_t read_u16(std::size_t offset) const;
     void write_u16(std::size_t offset, std::uint16_t value);
     void update_free_bitmap();
@@ -256,6 +274,9 @@ namespace Apex
     };
 
     Disk();
+
+    void initialize(std::uint16_t block_count = 560,
+		    std::size_t volume_number = 0);
 
     Directory get_directory(DirectoryType type);
 

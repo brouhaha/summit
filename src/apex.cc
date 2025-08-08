@@ -8,6 +8,10 @@
 #include <cstring>
 #include <format>
 #include <iostream>
+#include <limits>
+#include <random>
+
+#include <magic_enum_utility.hpp>
 
 #include "apex.hh"
 #include "utility.hh"
@@ -219,6 +223,12 @@ namespace Apex
     return std::format("{:04d}-{:02d}-{:02d}", get_year(), get_month(), get_day());
   }
 
+  std::ostream& operator<<(std::ostream& os, const Date& date)
+  {
+    os << date.to_string();
+    return os;
+  }
+
 
   DirectoryEntry::DirectoryEntry(Directory& dir,
 				 std::size_t index):
@@ -306,6 +316,25 @@ namespace Apex
   {
   }
 
+  void Directory::initialize(std::uint16_t block_count,
+			     std::uint16_t volume_number)
+  {
+    // Called from Disk::initialize(). Entire disk image has already
+    // been zeroed, so only have to set things that need to have
+    // non-zero values.
+    Date today;
+    write_u16(DirectoryOffset::PMAXB,  block_count - 1);
+    write_u16(DirectoryOffset::VOLUME, volume_number);
+    write_u16(DirectoryOffset::DIRDAT, today.get_raw());
+    m_directory_data[DirectoryOffset::TITLE] = '\r' + 0x80;
+    for (unsigned i = 0; i < FILENAME_CHARS + EXTENSION_CHARS; ++i)
+    {
+      m_directory_data[DirectoryOffset::PRNAME + i] = ' ';
+    }
+    update_free_bitmap();
+    update_disk_image();
+  }
+
   Directory::iterator& Directory::iterator::operator++()  // pre-increment
   {
     ++m_index;
@@ -368,6 +397,64 @@ namespace Apex
     {
       delete m_directory_entries[i];
     }
+  }
+
+  std::uint16_t Directory::get_volume_number() const
+  {
+    return read_u16(DirectoryOffset::VOLUME);
+  }
+
+  Date Directory::get_date() const
+  {
+    return Date(read_u16(DirectoryOffset::DIRDAT));
+  }
+
+  void Directory::set_date(const Date& new_date)
+  {
+    write_u16(DirectoryOffset::DIRDAT, new_date.get_raw());
+    update_disk_image();
+  }
+
+  std::string Directory::get_title() const
+  {
+    std::string s;
+
+    for (unsigned i = 0; i < MAX_TITLE_CHARS; i++)
+    {
+      std::uint8_t b = m_directory_data[DirectoryOffset::TITLE + i];
+      // Apex uses high bit for end of string, and a return for an empty title
+      if (b == 0x8d)
+      {
+	break;
+      }
+      s += b & 0x7f;
+      if (b & 0x80)
+	break;
+    }
+    return s;
+  }
+
+  void Directory::set_title(const std::string& new_title)
+  {
+    if (new_title.size() == 0)
+    {
+      set_title("\r");
+      return;
+    }
+    for (unsigned i = 0; i < MAX_TITLE_CHARS; i++)
+    {
+      if (i >= new_title.size())
+      {
+	break;
+      }
+      std::uint8_t b = new_title[i];
+      if (i == (new_title.size() - 1))
+      {
+	b |= 0x80;
+      }
+      m_directory_data[DirectoryOffset::TITLE + i] = b;
+    }
+    update_disk_image();
   }
 
   std::uint16_t Directory::read_u16(std::size_t offset) const
@@ -503,6 +590,30 @@ namespace Apex
 
   Disk::Disk()
   {
+  }
+
+  static std::uint16_t generate_random_volume_number()
+  {
+    std::random_device os_seed;
+    const std::uint32_t seed = os_seed();
+    std::mt19937 generator(seed);
+    std::uniform_int_distribution<std::uint16_t> distribute(1, std::numeric_limits<std::uint16_t>::max());
+    return distribute(generator);
+  }
+
+  void Disk::initialize(std::uint16_t block_count,
+			std::size_t volume_number)
+  {
+    
+    if (volume_number == 0)
+    {
+      volume_number = generate_random_volume_number();
+    }
+    magic_enum::enum_for_each<DirectoryType>([this, block_count, volume_number] (DirectoryType directory_type)
+        {
+	  Directory dir = get_directory(directory_type);
+	  dir.initialize(block_count, volume_number);
+	});
   }
 
   Directory Disk::get_directory(DirectoryType type)

@@ -89,6 +89,11 @@ void ls(const std::string& disk_image_fn,
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
   unsigned file_count = 0;
   unsigned file_listed_count = 0;
+  std::cout << std::format("volume {}, date {}, title \"{}\"\n",
+			   dir.get_volume_number(),
+			   dir.get_date().to_string(),
+			   dir.get_title());
+  std::cout << '\n';
   std::cout << "              first   block\n";
   std::cout << "filename      block   count   date\n";
   std::cout << "------------  ------  ------  ----------\n";
@@ -109,6 +114,7 @@ void ls(const std::string& disk_image_fn,
       }
     }
   }
+  std::cout << '\n';
   std::cout << std::format("{} of {} files listed, {} blocks used, {} blocks free of {} total blcoks\n",
 			   file_listed_count,
 			   file_count,
@@ -126,15 +132,6 @@ void free(const std::string& disk_image_fn)
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
   dir.debug_list_free_blocks();
 };
-
-
-void create(const std::string& disk_image_fn,
-	    const std::vector<Apex::Filename>& patterns)
-{
-  (void) disk_image_fn;
-  (void) patterns;
-  throw std::runtime_error("create not implemented");
-}
 
 
 void rm(const std::string& disk_image_fn,
@@ -317,6 +314,24 @@ void insert(const std::string& disk_image_fn,
 }
 
 
+void create(const std::string& disk_image_fn,
+	    const std::vector<Apex::Filename>& patterns)
+{
+  Apex::Disk disk;
+  disk.initialize();
+  
+  auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
+
+  std::size_t file_inserted_count = 0;
+  for (const Apex::Filename& filename: patterns)
+  {
+    insert_file(disk, dir, filename);
+    ++file_inserted_count;
+  }
+
+  disk.save(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  std::cout << std::format("image created, {} files inserted\n", file_inserted_count);
+}
 
 
 void validate(boost::any& v,
@@ -423,6 +438,7 @@ int main(int argc, char *argv[])
     {
     case Command::LS:
     case Command::EXTRACT:
+    case Command::CREATE:
       break;
     case Command::FREE:
       if (vm.count("filename") > 0)
@@ -430,7 +446,6 @@ int main(int argc, char *argv[])
 	throw po::validation_error(po::validation_error::invalid_option);
       }
       break;
-    case Command::CREATE:
     case Command::INSERT:
     case Command::RM:
       if (vm.count("filename") < 1)
