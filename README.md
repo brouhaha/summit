@@ -6,7 +6,7 @@ Summit is command-line utility to manipulate Apex disk images.
 Summit is written in C++20.
 
 Summit development is hosted at the
-[ibex Github repository](https://github.com/brouhaha/summit/).
+[Summit Github repository](https://github.com/brouhaha/summit/).
 
 ## License
 
@@ -46,7 +46,7 @@ your system include path, per their documentation. From the top level
 directory (above the "src" directory), type "scons". The resulting
 executable will be build/posix/summit.
 
-## Cross-compiling ibex for Windows
+## Cross-compiling Summit for Windows
 
 Summit can be cross-compiled on a Linux host for execution on Windows (32-bit and 64-bit).
 Use a "target=win32" or "target=win64" option on the SCons command line. If the
