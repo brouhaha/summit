@@ -65,8 +65,8 @@ def build_prog(prog_info):
 
 
 prog_infos = [ProgInfo('summit',
-                       ['apex.cc',
-                        'apple_ii_disk_image.cc',
+                       ['apex_disk.cc',
+                        'apple_ii_disk.cc',
                         'summit.cc',
                         'utility.cc'
                         ])]

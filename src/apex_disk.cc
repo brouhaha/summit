@@ -1,4 +1,4 @@
-// apex.cc
+// apex_disk.cc
 //
 // Copyright 2025 Eric Smith
 // SPDX-License-Identifier: GPL-3.0-only
@@ -13,7 +13,7 @@
 
 #include <magic_enum_utility.hpp>
 
-#include "apex.hh"
+#include "apex_disk.hh"
 #include "utility.hh"
 
 namespace Apex
@@ -271,6 +271,8 @@ namespace Apex
     m_dir.write_u16(DirectoryOffset::LAST_BLOCK + m_index * 2, last_block);
     m_dir.write_u16(DirectoryOffset::FDATE + m_index * 2, date.get_raw());
 
+    m_dir.set_unsorted();
+
     m_dir.update_free_bitmap();
     m_dir.update_disk_image();
   }
@@ -331,6 +333,8 @@ namespace Apex
     {
       m_directory_data[DirectoryOffset::PRNAME + i] = ' ';
     }
+    set_unsorted();
+    set_locked(false);
     update_free_bitmap();
     update_disk_image();
   }
@@ -455,6 +459,18 @@ namespace Apex
       m_directory_data[DirectoryOffset::TITLE + i] = b;
     }
     update_disk_image();
+  }
+
+  void Directory::set_unsorted(bool unsorted)
+  {
+    // Apex 1.7 expects that the directory is sorted unless DIRCHG is non-zero.
+    m_directory_data[DirectoryOffset::DIRCHG] = unsorted ? 0xff : 0x00;
+  }
+
+  void Directory::set_locked(bool locked)
+  {
+    // Apex 1.7 added a volume locked flag, zero for locked, non-zero for unlocked
+    m_directory_data[DirectoryOffset::FLAG_LOCK] = locked ? 0x00 : 0xff;
   }
 
   std::uint16_t Directory::read_u16(std::size_t offset) const
@@ -588,7 +604,8 @@ namespace Apex
     return iterator(*this, ENTRIES_PER_DIRECTORY);
   }
 
-  Disk::Disk()
+  Disk::Disk(AppleII::DiskImage::ImageFormat format):
+    AppleII::DiskImage(format)
   {
   }
 
@@ -625,20 +642,24 @@ namespace Apex
 		  std::size_t block_count,
 		  std::uint8_t* data)
   {
-    AppleIIDiskImage::read(block_number / AppleIIDiskImage::SECTORS_PER_TRACK,
-			   block_number % AppleIIDiskImage::SECTORS_PER_TRACK,
-			   block_count,
-			   data);
+    std::uint8_t sectors = get_geometry(get_format()).sectors;
+    AppleII::DiskImage::read(block_number / sectors,  // track
+			     0,                       // head
+			     block_number % sectors,  // sector
+			     block_count,
+			     data);
   }
 
   void Disk::write(std::uint16_t block_number,
 		   std::size_t block_count,
 		   const std::uint8_t* data)
   {
-    AppleIIDiskImage::write(block_number / AppleIIDiskImage::SECTORS_PER_TRACK,
-			    block_number % AppleIIDiskImage::SECTORS_PER_TRACK,
-			    block_count,
-			    data);
+    std::uint8_t sectors = get_geometry(get_format()).sectors;
+    AppleII::DiskImage::write(block_number / sectors,  // track
+			      0,                       // head
+			      block_number % sectors,  // sector
+			      block_count,
+			      data);
   }
 
 } // end namespace Apex

@@ -6,6 +6,6 @@ SPDX-License-Identifier: GPL-3.0-only
 
 <metadata xmln="http://summit.brouhaha.com/xmlns/metadata">
   <name>summit</name>
-  <version major="0" minor="3"/>
+  <version major="0" minor="4"/>
   <release_type>preview</release_type>
 </metadata>

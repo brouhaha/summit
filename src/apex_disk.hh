@@ -1,10 +1,10 @@
-// apex.hh
+// apex_disk.hh
 //
 // Copyright 2025 Eric Smith
 // SPDX-License-Identifier: GPL-3.0-only
 
-#ifndef APEX_HH
-#define APEX_HH
+#ifndef APEX_DISK_HH
+#define APEX_DISK_HH
 
 #include <array>
 #include <iterator>
@@ -17,7 +17,7 @@
 #include <magic_enum.hpp>
 #include <magic_enum_containers.hpp>
 
-#include "apple_ii_disk_image.hh"
+#include "apple_ii_disk.hh"
 
 namespace Apex
 {
@@ -123,26 +123,32 @@ namespace Apex
     FIRST_BLOCK = 12 * ENTRIES_PER_DIRECTORY,  //  2 bytes
     LAST_BLOCK = 14 * ENTRIES_PER_DIRECTORY,   //  2 bytes
 
-    // 74 bytes unused from 0x300..0x349
+    // Apex v1.7 only:
+    FEMBLK = 0x300,  // 12 bytes
+    LEMBLK = 0x30c,  // 12 bytes
+    STAB   = 0x318,  // 48 bytes
+    NUMVAL = 0x348,  //  1 byte
+    DIRCHG = 0x349,  //  1 byte - if non-zero, directory has not been sorted
 
     // offset of per-volume fields
-    PRDEV = 0x34a,  // 1 byte - device associated with PRNAME
-    PMAXB = 0x34b,  // 2 bytes - max block - unused - 0x01c6 (456), should be 0x230 (560)
-    PRNAME = 0x34d, // 11 bytes - default file
-    TITLE = 0x358,  // 32 bytes - volume title
+    PRDEV  = 0x34a,  //  1 byte - device associated with PRNAME
+    PMAXB  = 0x34b,  //  2 bytes - max block - unused - 0x01c6 (456), should be 0x230 (560)
+    PRNAME = 0x34d,  // 11 bytes - default file
+    TITLE  = 0x358,  // 32 bytes - volume title
 
     // 28 bytes unused from 0x378..0x393
 
-    VOLUME = 0x394, // 2 bytes - volume unique ID
-    DIRDAT = 0x396, // 2 bytes - volume date
+    VOLUME = 0x394,  // 2 bytes - volume unique ID
+    DIRDAT = 0x396,  // 2 bytes - volume date
 
     // another per-file field, indexed by directory entry number
-    FDATE = 0x398,                             //  2 bytes
+    FDATE  = 0x398,  //  2 bytes per file
 
     // more per-volume fields
-    FLAG_PACK = 0x3f8,
+    FLAG_PACK   = 0x3f8,
     FLAG_BACKUP = 0x3f9,
-    FLAG_CHECK = 0x3fa,
+    FLAG_CHECK  = 0x3fa,
+    FLAG_LOCK   = 0x3fb,  // v1.7 only
 
     // 5 bytes - unused, potentially additional flags
   };
@@ -224,6 +230,9 @@ namespace Apex
     std::string get_title() const;
     void set_title(const std::string& new_title);
 
+    void set_unsorted(bool unsorted = true);
+    void set_locked(bool locked);
+
     std::size_t volume_size_blocks() const;
     std::size_t volume_free_blocks() const;
 
@@ -246,7 +255,6 @@ namespace Apex
     void update_free_bitmap();
     void update_disk_image();
 
-
     Disk& m_disk;
     std::uint16_t m_start_block;
 
@@ -258,7 +266,7 @@ namespace Apex
     friend class Disk;
   };
 
-  class Disk: public AppleIIDiskImage
+  class Disk: public AppleII::DiskImage
   {
   public:
     enum class DirectoryType
@@ -273,7 +281,7 @@ namespace Apex
       13, // BACKUP
     };
 
-    Disk();
+    Disk(AppleII::DiskImage::ImageFormat format);
 
     void initialize(std::uint16_t block_count = 560,
 		    std::size_t volume_number = 0);
@@ -294,4 +302,4 @@ namespace Apex
   };
 } // end namespace Apex
 
-#endif // APEX_HH
+#endif // APEX_DISK_HH

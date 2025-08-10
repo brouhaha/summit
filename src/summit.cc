@@ -15,9 +15,9 @@
 
 #include <magic_enum.hpp>
 
-#include "apex.hh"
+#include "apex_disk.hh"
 #include "app_metadata.hh"
-#include "apple_ii_disk_image.hh"
+#include "apple_ii_disk.hh"
 #include "utility.hh"
 
 
@@ -74,7 +74,8 @@ bool patterns_match(const std::vector<Apex::Filename>& patterns,
 }
 
 
-void ls(const std::string& disk_image_fn,
+void ls(AppleII::DiskImage::ImageFormat disk_image_format,
+	const std::string& disk_image_fn,
 	const std::vector<Apex::Filename>& patterns)
 {
   const std::vector<Apex::Filename> wildcard
@@ -84,8 +85,8 @@ void ls(const std::string& disk_image_fn,
 
   const std::vector<Apex::Filename>& p = patterns.size() ? patterns : wildcard;
 
-  Apex::Disk disk;
-  disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  Apex::Disk disk(disk_image_format);
+  disk.load(disk_image_fn);
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
   unsigned file_count = 0;
   unsigned file_listed_count = 0;
@@ -125,20 +126,22 @@ void ls(const std::string& disk_image_fn,
 };
 
 
-void free(const std::string& disk_image_fn)
+void free(AppleII::DiskImage::ImageFormat disk_image_format,
+	  const std::string& disk_image_fn)
 {
-  Apex::Disk disk;
-  disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  Apex::Disk disk(disk_image_format);
+  disk.load(disk_image_fn);
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
   dir.debug_list_free_blocks();
 };
 
 
-void rm(const std::string& disk_image_fn,
+void rm(AppleII::DiskImage::ImageFormat disk_image_format,
+	const std::string& disk_image_fn,
 	const std::vector<Apex::Filename>& patterns)
 {
-  Apex::Disk disk;
-  disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  Apex::Disk disk(disk_image_format);
+  disk.load(disk_image_fn);
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
   unsigned file_deleted_count = 0;
   for (auto& dir_entry: dir)
@@ -154,7 +157,7 @@ void rm(const std::string& disk_image_fn,
       }
     }
   }
-  disk.save(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  disk.save(disk_image_fn);
   std::cout << std::format("{} files deleted\n", file_deleted_count);
 }
 
@@ -164,7 +167,6 @@ void extract_file(Apex::Disk& disk,
 		  std::uint16_t first_block,
 		  std::uint16_t block_count)
 {
-  (void) disk;
   std::string host_filename = utility::downcase_string(filename.to_string());
   std::cout << std::format("extracting file {}, first block {}, block count {}\n",
 			   filename.to_string(),
@@ -191,7 +193,8 @@ void extract_file(Apex::Disk& disk,
 }
 
 
-void extract(const std::string& disk_image_fn,
+void extract(AppleII::DiskImage::ImageFormat disk_image_format,
+	     const std::string& disk_image_fn,
 	     const std::vector<Apex::Filename>& patterns)
 {
   const std::vector<Apex::Filename> wildcard
@@ -201,8 +204,8 @@ void extract(const std::string& disk_image_fn,
 
   const std::vector<Apex::Filename>& p = patterns.size() ? patterns : wildcard;
 
-  Apex::Disk disk;
-  disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  Apex::Disk disk(disk_image_format);
+  disk.load(disk_image_fn);
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
 
   std::size_t file_count = 0;
@@ -295,11 +298,12 @@ void insert_file(Apex::Disk& disk,
 }
 
 
-void insert(const std::string& disk_image_fn,
+void insert(AppleII::DiskImage::ImageFormat disk_image_format,
+	    const std::string& disk_image_fn,
 	    const std::vector<Apex::Filename>& patterns)
 {
-  Apex::Disk disk;
-  disk.load(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  Apex::Disk disk(disk_image_format);
+  disk.load(disk_image_fn);
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
 
   std::size_t file_inserted_count = 0;
@@ -309,15 +313,16 @@ void insert(const std::string& disk_image_fn,
     ++file_inserted_count;
   }
 
-  disk.save(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  disk.save(disk_image_fn);
   std::cout << std::format("{} files inserted\n", file_inserted_count);
 }
 
 
-void create(const std::string& disk_image_fn,
+void create(AppleII::DiskImage::ImageFormat disk_image_format,
+	    const std::string& disk_image_fn,
 	    const std::vector<Apex::Filename>& patterns)
 {
-  Apex::Disk disk;
+  Apex::Disk disk(disk_image_format);
   disk.initialize();
   
   auto dir = disk.get_directory(Apex::Disk::DirectoryType::PRIMARY);
@@ -329,7 +334,7 @@ void create(const std::string& disk_image_fn,
     ++file_inserted_count;
   }
 
-  disk.save(AppleIIDiskImage::ImageFormat::APEX_ORDER, disk_image_fn);
+  disk.save(disk_image_fn);
   std::cout << std::format("image created, {} files inserted\n", file_inserted_count);
 }
 
@@ -377,7 +382,7 @@ int main(int argc, char *argv[])
   std::string disk_image_fn;
   std::vector<std::string> pattern_strings;
   std::vector<Apex::Filename> patterns;
-  [[maybe_unused]] AppleIIDiskImage::ImageFormat image_format = AppleIIDiskImage::ImageFormat::DOS_ORDER;
+  AppleII::DiskImage::ImageFormat disk_image_format = AppleII::DiskImage::ImageFormat::DOS_ORDER;
 
   std::cout << std::format("{} version {} {}\n", name, app_version_string, release_type_string);
 
@@ -467,40 +472,14 @@ int main(int argc, char *argv[])
     patterns.emplace_back(pattern_string);
   }
 
-#if 0
-  std::cout << std::format("command: {}\n", magic_enum::enum_name(command));
-  std::cout << std::format("image filename: \"{}\"\n", disk_image_fn);
-  for (const Apex::Filename& pattern: patterns)
-  {
-    std::cout << std::format("file pattern: \"{}\"\n", pattern.to_string());
-  }
-#endif
-
   switch (command)
   {
-  case Command::LS:
-    ls(disk_image_fn, patterns);
-    break;
-
-  case Command::EXTRACT:
-    extract(disk_image_fn, patterns);
-    break;
-
-  case Command::INSERT:
-    insert(disk_image_fn, patterns);
-    break;
-
-  case Command::CREATE:
-    create(disk_image_fn, patterns);
-    break;
-
-  case Command::RM:
-    rm(disk_image_fn, patterns);
-    break;
-
-  case Command::FREE:
-    free(disk_image_fn);
-    break;
+  case Command::LS:      ls     (disk_image_format, disk_image_fn, patterns); break;
+  case Command::EXTRACT: extract(disk_image_format, disk_image_fn, patterns); break;
+  case Command::INSERT:  insert (disk_image_format, disk_image_fn, patterns); break;
+  case Command::CREATE:  create (disk_image_format, disk_image_fn, patterns); break;
+  case Command::RM:      rm     (disk_image_format, disk_image_fn, patterns); break;
+  case Command::FREE:    free   (disk_image_format, disk_image_fn);           break;
   }
 
   return 0;
