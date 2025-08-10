@@ -382,7 +382,7 @@ int main(int argc, char *argv[])
   std::string disk_image_fn;
   std::vector<std::string> pattern_strings;
   std::vector<Apex::Filename> patterns;
-  AppleII::DiskImage::ImageFormat disk_image_format = AppleII::DiskImage::ImageFormat::DOS_ORDER;
+  AppleII::DiskImage::ImageFormat disk_image_format = AppleII::DiskImage::ImageFormat::APEX_ORDER;
 
   std::cout << std::format("{} version {} {}\n", name, app_version_string, release_type_string);
 
